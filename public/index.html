@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Puppeteer 自动化工具</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🤖 Puppeteer 自动化工具</h1>
+            <div class="status" id="status">
+                <span class="status-indicator" id="statusIndicator"></span>
+                <span id="statusText">就绪</span>
+            </div>
+        </header>
+
+        <main>
+            <div class="control-panel">
+                <div class="form-group">
+                    <label for="searchKeyword">搜索关键词:</label>
+                    <input type="text" id="searchKeyword" placeholder="请输入搜索关键词" value="凡铭">
+                </div>
+                
+                <div class="form-group">
+                    <label for="maxItems">最大处理数量:</label>
+                    <input type="number" id="maxItems" placeholder="-1表示全部" value="-1">
+                </div>
+                
+                <div class="button-group">
+                    <button id="startBtn" class="btn btn-primary">开始执行</button>
+                    <button id="stopBtn" class="btn btn-danger" disabled>停止执行</button>
+                    <button id="clearLogsBtn" class="btn btn-secondary">清空日志</button>
+                </div>
+            </div>
+
+            <div class="logs-panel">
+                <div class="logs-header">
+                    <h3>执行日志</h3>
+                    <div class="logs-controls">
+                        <button id="refreshLogsBtn" class="btn btn-small">刷新</button>
+                        <button id="autoScrollBtn" class="btn btn-small active">自动滚动</button>
+                    </div>
+                </div>
+                <div class="logs-container" id="logsContainer">
+                    <div class="log-entry info">
+                        <span class="timestamp">[等待中]</span>
+                        <span class="message">请配置参数并点击"开始执行"</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

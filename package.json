@@ -1,0 +1,55 @@
+{
+  "name": "puppeteer-automation",
+  "version": "1.0.0",
+  "description": "Puppeteer 网页自动化抓取工具",
+  "main": "server.js",
+  "type": "module",
+  "bin": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "install-chrome": "npx @puppeteer/browsers install chrome@116.0.5793.0",
+    "prebuild": "npm run install-chrome",
+    "build": "pkg package.json --out-path dist",
+    "build-win": "npm run install-chrome && pkg package.json --targets node18-win-x64 --out-path dist",
+    "build-all": "npm run install-chrome && pkg package.json --targets node18-win-x64,node18-macos-x64,node18-linux-x64 --out-path dist",
+    "postinstall": "npm run install-chrome",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "puppeteer",
+    "automation",
+    "scraping"
+  ],
+  "author": "Xufan",
+  "license": "MIT",
+  "dependencies": {
+    "boolean": "^3.2.0",
+    "dotenv": "^16.0.3",
+    "fs-extra": "^11.3.0",
+    "puppeteer": "^22.8.2",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "@puppeteer/browsers": "^1.9.1"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  },
+  "pkg": {
+    "targets": ["node18-win-x64"],
+    "assets": [
+      "public/**/*",
+      "src/**/*",
+      ".env.example",
+      "chrome/**/*"
+    ],
+    "scripts": {
+      "server.js": "server.js"
+    },
+    "outputPath": "dist",
+    "options": [
+      "--no-bytecode",
+      "--public-packages=*"
+    ]
+  }
+}
