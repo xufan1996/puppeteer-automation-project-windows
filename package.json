@@ -42,9 +42,9 @@
       ".env.example",
       "chrome/**/*"
     ],
-    "scripts": {
-      "server.js": "server.js"
-    },
+    "scripts": [
+      "server.js"
+    ],
     "outputPath": "dist",
     "options": [
       "--no-bytecode",
