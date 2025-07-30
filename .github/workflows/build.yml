@@ -13,7 +13,10 @@ jobs:
       matrix:
         os: [windows-latest]
         include:
+<<<<<<< HEAD
 
+=======
+>>>>>>> feeb7742b7f2dba99c40bf7f073566bc189f67cc
           - os: windows-latest
             target: node18-win-x64
             output: puppeteer-automation-win.exe
