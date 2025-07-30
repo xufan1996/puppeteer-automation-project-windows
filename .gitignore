@@ -11,3 +11,5 @@ puppeteer-automation-project/chrome/
 # Chrome浏览器文件
 chrome/
 *.app/
+# 忽略 Chrome 测试框架
+puppeteer-automation-project/chrome/
