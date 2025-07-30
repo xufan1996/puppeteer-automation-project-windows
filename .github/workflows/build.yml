@@ -11,17 +11,11 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [windows-latest]
         include:
-          - os: ubuntu-latest
-            target: node18-linux-x64
-            output: puppeteer-automation-linux
           - os: windows-latest
             target: node18-win-x64
             output: puppeteer-automation-win.exe
-          - os: macos-latest
-            target: node18-macos-x64
-            output: puppeteer-automation-macos
     
     runs-on: ${{ matrix.os }}
     
