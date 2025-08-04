@@ -6,8 +6,21 @@ const path = require('path');
 const os = require('os');
 const { getPkgChromePath } = require('./pkg-chrome-helper');
 
-// 加载环境变量
-dotenv.config();
+// 检测是否为打包后的可执行文件
+const isPkg = typeof process.pkg !== 'undefined';
+
+// 加载环境变量 - 根据环境选择正确的配置文件路径
+if (isPkg) {
+  // 打包环境中，从可执行文件同目录读取
+  const execDir = path.dirname(process.execPath);
+  const envPath = path.join(execDir, '.env');
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+  }
+} else {
+  // 开发环境中，从项目根目录读取
+  dotenv.config();
+}
 
 // 日志函数
 const log = (message, type = 'log') => {
@@ -474,7 +487,7 @@ const processListData = async (page, maxItems = -1) => {
     log('✅ 自动化流程执行完成！');
     
   } catch (error) {
-    logError('❌ 自动化脚本执行失败:', error);
+    logError('❌ 自动化脚本执行失败:', error.message);
     if (page) {
       await saveScreenshot(page, 'error');
     }

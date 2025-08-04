@@ -5,8 +5,21 @@ const path = require('path');
 const os = require('os');
 const { getPkgChromePath } = require('./pkg-chrome-helper');
 
-// Configure dotenv
-dotenv.config();
+// 检测是否为打包后的可执行文件
+const isPkg = typeof process.pkg !== 'undefined';
+
+// Configure dotenv - 根据环境选择正确的配置文件路径
+if (isPkg) {
+  // 打包环境中，从可执行文件同目录读取
+  const execDir = path.dirname(process.execPath);
+  const envPath = path.join(execDir, '.env');
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+  }
+} else {
+  // 开发环境中，从项目根目录读取
+  dotenv.config();
+}
 
 // 获取Chrome可执行文件路径 - pkg优化版本
 const getChromePath = () => {

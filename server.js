@@ -7,14 +7,28 @@ const fs = require('fs');
 const dotenv = require('dotenv');
 const os = require('os');
 
-// 配置环境变量
-dotenv.config();
+// 检测是否为打包后的可执行文件
+const isPkg = typeof process.pkg !== 'undefined';
+
+// 配置环境变量 - 根据环境选择正确的配置文件路径
+if (isPkg) {
+  // 打包环境中，从可执行文件同目录读取
+  const execDir = path.dirname(process.execPath);
+  const envPath = path.join(execDir, '.env');
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+    console.log(`已从 ${envPath} 加载配置`);
+  } else {
+    console.log(`配置文件不存在: ${envPath}`);
+  }
+} else {
+  // 开发环境中，从项目根目录读取
+  dotenv.config();
+  console.log('已从项目根目录加载配置');
+}
 
 // CommonJS中__dirname是内置的，无需定义
 const PORT = process.env.PORT || 3000;
-
-// 检测是否为打包后的可执行文件
-const isPkg = typeof process.pkg !== 'undefined';
 const isWindows = os.platform() === 'win32';
 
 // 详细的环境信息日志
@@ -262,12 +276,25 @@ app.post('/api/start', (req, res) => {
   // 更新环境变量
   process.env.SEARCH_KEYWORD = searchKeyword;
   
-  // 更新 .env 文件
+  // 更新 .env 文件 - 处理打包环境
   try {
     const envContent = `SEARCH_KEYWORD=${searchKeyword}\nMAX_ITEMS=${maxItems}`;
-    fs.writeFileSync(path.join(__dirname, '.env'), envContent, 'utf8');
+    let envPath;
+    
+    if (isPkg) {
+      // 打包环境中，写入到可执行文件同目录下
+      const execDir = path.dirname(process.execPath);
+      envPath = path.join(execDir, '.env');
+    } else {
+      // 开发环境中，写入到项目根目录
+      envPath = path.join(__dirname, '.env');
+    }
+    
+    fs.writeFileSync(envPath, envContent, 'utf8');
+    addLog(`配置已保存到: ${envPath}`, 'info');
   } catch (error) {
     addLog(`写入.env文件失败: ${error.message}`, 'warning');
+    addLog('配置仅在内存中生效，重启后将丢失', 'warning');
   }
 
   addLog(`开始执行自动化任务，关键词: ${searchKeyword}`, 'info');
