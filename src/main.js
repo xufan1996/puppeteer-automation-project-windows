@@ -600,7 +600,7 @@ const processListData = async (page, maxItems = -1) => {
     log('✅ 自动化流程执行完成！');
     
   } catch (error) {
-    logError('❌ 自动化脚本执行失败:', error.message);
+    logError(`❌ 自动化脚本执行失败: ${error.message}`);
     if (page) {
       await saveScreenshot(page, 'error');
     }
