@@ -1124,7 +1124,18 @@ const processEditPageDirectly = async (page, itemIndex) => {
 // 工作进程主函数
 const workerMain = async () => {
   const args = process.argv.slice(2);
-  const taskData = JSON.parse(args[0]);
+  const tempFile = args[0]; // 现在第一个参数是临时文件路径
+  
+  let taskData;
+  try {
+    // 从临时文件读取数据
+    const fileContent = fs.readFileSync(tempFile, 'utf8');
+    taskData = JSON.parse(fileContent);
+    console.log(`[Worker ${process.pid}] 从临时文件读取数据: ${tempFile}`);
+  } catch (error) {
+    console.error(`[Worker ${process.pid}] 读取临时文件失败: ${error.message}`);
+    process.exit(1);
+  }
   
   const { itemIndex, pageNumber, searchKeyword, targetUrl, editUrl, authData } = taskData;
   
@@ -1256,6 +1267,16 @@ const workerMain = async () => {
   } finally {
     if (browser) {
       await browser.close();
+    }
+    
+    // 清理临时文件
+    try {
+      if (tempFile && fs.existsSync(tempFile)) {
+        fs.unlinkSync(tempFile);
+        console.log(`[Worker ${process.pid}] 清理临时文件: ${tempFile}`);
+      }
+    } catch (error) {
+      console.error(`[Worker ${process.pid}] 清理临时文件失败: ${error.message}`);
     }
   }
 };

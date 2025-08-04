@@ -4,6 +4,7 @@ const fs = require('fs');
 const dotenv = require('dotenv');
 const path = require('path');
 const os = require('os');
+const { spawn } = require('child_process');
 const { getPkgChromePath } = require('./pkg-chrome-helper');
 
 // 检测是否为打包后的可执行文件
@@ -253,7 +254,20 @@ const processListData = async (page, maxItems = -1) => {
         const processPromise = new Promise((resolve, reject) => {
           const workerPath = path.join(__dirname, 'worker.js');
           
-          const childProcess = spawn('node', [workerPath, JSON.stringify(taskData)], {
+          // 创建临时文件传递数据，避免命令行参数过长
+          const tempDir = os.tmpdir();
+          const tempFile = path.join(tempDir, `worker-data-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.json`);
+          
+          try {
+            fs.writeFileSync(tempFile, JSON.stringify(taskData));
+            log(`创建临时数据文件: ${tempFile}`);
+          } catch (error) {
+            logError(`创建临时数据文件失败: ${error.message}`);
+            reject(error);
+            return;
+          }
+          
+          const childProcess = spawn('node', [workerPath, tempFile], {
             stdio: ['pipe', 'pipe', 'pipe'],
             env: { ...process.env }
           });
@@ -272,6 +286,16 @@ const processListData = async (page, maxItems = -1) => {
           });
           
           childProcess.on('close', (code) => {
+            // 清理临时文件
+            try {
+              if (fs.existsSync(tempFile)) {
+                fs.unlinkSync(tempFile);
+                log(`清理临时文件: ${tempFile}`);
+              }
+            } catch (error) {
+              logError(`清理临时文件失败: ${error.message}`);
+            }
+            
             if (code === 0) {
               log(`✅ 进程 ${childProcess.pid} (任务 ${i + 1}) 处理成功`);
               resolve(true);
@@ -282,6 +306,16 @@ const processListData = async (page, maxItems = -1) => {
           });
           
           childProcess.on('error', (error) => {
+            // 清理临时文件
+            try {
+              if (fs.existsSync(tempFile)) {
+                fs.unlinkSync(tempFile);
+                log(`清理临时文件: ${tempFile}`);
+              }
+            } catch (cleanupError) {
+              logError(`清理临时文件失败: ${cleanupError.message}`);
+            }
+            
             logError(`❌ 进程 ${childProcess.pid} (任务 ${i + 1}) 启动失败:`, error);
             reject(error);
           });
