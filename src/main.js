@@ -167,8 +167,6 @@ const processListData = async (page, maxItems = -1) => {
       };
       
         const processPromise = new Promise((resolve, reject) => {
-          const __filename = fileURLToPath(import.meta.url);
-          const __dirname = path.dirname(__filename);
           const workerPath = path.join(__dirname, 'worker.js');
           
           const childProcess = spawn('node', [workerPath, JSON.stringify(taskData)], {
