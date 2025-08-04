@@ -1,0 +1,52 @@
+{
+  "name": "puppeteer-automation",
+  "version": "1.0.0",
+  "description": "Puppeteer 网页自动化抓取工具",
+  "main": "server.js",
+  "bin": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "install-chrome": "npx @puppeteer/browsers install chrome@116.0.5793.0",
+    "build": "node fix-pkg-chrome-build.js"
+  },
+  "keywords": [
+    "puppeteer",
+    "automation",
+    "scraping"
+  ],
+  "author": "Xufan",
+  "license": "MIT",
+  "dependencies": {
+    "boolean": "^3.2.0",
+    "dotenv": "^16.0.3",
+    "fs-extra": "^11.3.0",
+    "puppeteer": "^22.8.2",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "@puppeteer/browsers": "^1.9.1"
+  },
+  "devDependencies": {
+  },
+  "pkg": {
+    "targets": ["node18-win-x64"],
+    "assets": [
+      "chrome/**/*",
+      "public/**/*",
+      "src/**/*.js",
+      ".env.example",
+      ".puppeteerrc.cjs"
+    ],
+    "scripts": [
+      "server.js",
+      "src/main.js",
+      "src/worker.js"
+    ],
+    "outputPath": "dist",
+    "options": [
+      "--no-bytecode",
+      "--public-packages=*",
+      "--compress=Brotli"
+    ]
+  }
+}
