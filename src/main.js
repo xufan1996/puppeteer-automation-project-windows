@@ -9,6 +9,77 @@ const { getPkgChromePath } = require('./pkg-chrome-helper');
 // 检测是否为打包后的可执行文件
 const isPkg = typeof process.pkg !== 'undefined';
 
+// 获取Chrome可执行文件路径 - pkg优化版本
+const getChromePath = () => {
+  console.log('=== Chrome路径检测（pkg优化版）===');
+  
+  // 首先尝试pkg兼容的路径检测
+  const pkgPath = getPkgChromePath();
+  if (pkgPath && fs.existsSync(pkgPath)) {
+    console.log('✅ pkg兼容路径检测成功:', pkgPath);
+    return pkgPath;
+  }
+  
+  // 如果pkg方法失败，使用原始方法
+  const platform = os.platform();
+  const isPkg = typeof process.pkg !== 'undefined';
+  
+  console.log(`平台: ${platform}, 架构: ${os.arch()}, pkg模式: ${isPkg}`);
+  console.log(`process.execPath: ${process.execPath}`);
+  console.log(`__dirname: ${__dirname}`);
+  
+  let chromePath;
+  
+  if (isPkg) {
+    let execDir;
+    
+    if (platform === 'win32') {
+      execDir = path.dirname(process.execPath);
+      console.log(`pkg执行目录: ${execDir}`);
+      
+      const possiblePaths = [
+        path.join(execDir, 'chrome', 'win64-116.0.5793.0', 'chrome-win64', 'chrome.exe'),
+        path.join(execDir, 'chrome-win64', 'chrome.exe'),
+        path.join(execDir, 'chrome', 'chrome-win64', 'chrome.exe'),
+        path.resolve(execDir, 'chrome', 'win64-116.0.5793.0', 'chrome-win64', 'chrome.exe')
+      ];
+      
+      console.log('尝试的Chrome路径:');
+      for (let i = 0; i < possiblePaths.length; i++) {
+        console.log(`  ${i + 1}. ${possiblePaths[i]}`);
+        if (fs.existsSync(possiblePaths[i])) {
+          chromePath = possiblePaths[i];
+          console.log(`  ✅ 找到有效路径: ${chromePath}`);
+          break;
+        } else {
+          console.log(`  ❌ 路径不存在`);
+        }
+      }
+    } else {
+      throw new Error('此版本仅支持Windows平台');
+    }
+  } else {
+    const projectDir = path.join(__dirname, '..');
+    console.log(`开发环境项目目录: ${projectDir}`);
+    
+    if (platform === 'win32') {
+      chromePath = path.join(projectDir, 'chrome', 'win64-116.0.5793.0', 'chrome-win64', 'chrome.exe');
+    } else {
+      throw new Error('此版本仅支持Windows平台');
+    }
+  }
+  
+  if (!chromePath) {
+    console.error('❌ 无法找到Chrome可执行文件');
+    console.error('请确保Chrome已正确安装或打包到应用程序中');
+    throw new Error('Chrome可执行文件未找到');
+  }
+  
+  console.log(`✅ 最终Chrome路径: ${chromePath}`);
+  console.log(`==================\n`);
+  return chromePath;
+};
+
 // 加载环境变量 - 根据环境选择正确的配置文件路径
 if (isPkg) {
   // 打包环境中，从可执行文件同目录读取
@@ -307,8 +378,16 @@ const processListData = async (page, maxItems = -1) => {
     }
     
   
+    // 获取Chrome路径
+    const chromePath = getChromePath();
+    if (!chromePath) {
+      throw new Error('无法找到Chrome可执行文件');
+    }
+    log(`使用Chrome路径: ${chromePath}`);
+    
     // 启动浏览器 - 设置为可视化模式
     browser = await puppeteer.launch({
+      executablePath: chromePath, // 指定Chrome可执行文件路径
       headless: false, // 设置为false以显示浏览器窗口
       devtools: false, // 可选：是否打开开发者工具
       slowMo: 100, // 可选：每个操作之间的延迟（毫秒），便于观察

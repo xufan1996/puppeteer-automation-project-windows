@@ -82,7 +82,13 @@ const getChromePath = () => {
     }
   }
   
-  console.log(`[Worker ${process.pid}] 计算出的Chrome路径: ${chromePath}`);
+  if (!chromePath) {
+    console.error(`[Worker ${process.pid}] ❌ 无法找到Chrome可执行文件`);
+    console.error(`[Worker ${process.pid}] 请确保Chrome已正确安装或打包到应用程序中`);
+    throw new Error('Chrome可执行文件未找到');
+  }
+  
+  console.log(`[Worker ${process.pid}] ✅ 最终Chrome路径: ${chromePath}`);
   console.log(`[Worker ${process.pid}] ==================\n`);
   return chromePath;
 };
