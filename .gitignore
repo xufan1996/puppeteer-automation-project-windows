@@ -13,3 +13,5 @@ chrome/
 *.app/
 # 忽略 Chrome 测试框架
 puppeteer-automation-project/chrome/
+
+.trae

@@ -1,11 +1,97 @@
-import puppeteer from 'puppeteer';
-import fs from 'fs';
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
-import path from 'path';
+const puppeteer = require('puppeteer');
+const fs = require('fs');
+const dotenv = require('dotenv');
+const path = require('path');
+const os = require('os');
+const { getPkgChromePath } = require('./pkg-chrome-helper');
 
-// Configure dotenv
-dotenv.config();
+// 检测是否为打包后的可执行文件
+const isPkg = typeof process.pkg !== 'undefined';
+
+// Configure dotenv - 根据环境选择正确的配置文件路径
+if (isPkg) {
+  // 打包环境中，从可执行文件同目录读取
+  const execDir = path.dirname(process.execPath);
+  const envPath = path.join(execDir, '.env');
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+  }
+} else {
+  // 开发环境中，从项目根目录读取
+  dotenv.config();
+}
+
+// 获取Chrome可执行文件路径 - pkg优化版本
+const getChromePath = () => {
+  console.log(`[Worker ${process.pid}] === Chrome路径检测（pkg优化版）===`);
+  
+  // 首先尝试pkg兼容的路径检测
+  const pkgPath = getPkgChromePath();
+  if (pkgPath && fs.existsSync(pkgPath)) {
+    console.log(`[Worker ${process.pid}] ✅ pkg兼容路径检测成功: ${pkgPath}`);
+    return pkgPath;
+  }
+  
+  // 如果pkg方法失败，使用原始方法
+  const platform = os.platform();
+  const isPkg = typeof process.pkg !== 'undefined';
+  
+  console.log(`[Worker ${process.pid}] 平台: ${platform}, 架构: ${os.arch()}, pkg模式: ${isPkg}`);
+  console.log(`[Worker ${process.pid}] process.execPath: ${process.execPath}`);
+  console.log(`[Worker ${process.pid}] __dirname: ${__dirname}`);
+  
+  let chromePath;
+  
+  if (isPkg) {
+    let execDir;
+    
+    if (platform === 'win32') {
+      execDir = path.dirname(process.execPath);
+      console.log(`[Worker ${process.pid}] pkg执行目录: ${execDir}`);
+      
+      const possiblePaths = [
+        path.join(execDir, 'chrome', 'win64-116.0.5793.0', 'chrome-win64', 'chrome.exe'),
+        path.join(execDir, 'chrome-win64', 'chrome.exe'),
+        path.join(execDir, 'chrome', 'chrome-win64', 'chrome.exe'),
+        path.resolve(execDir, 'chrome', 'win64-116.0.5793.0', 'chrome-win64', 'chrome.exe')
+      ];
+      
+      console.log(`[Worker ${process.pid}] 尝试的Chrome路径:`);
+      for (let i = 0; i < possiblePaths.length; i++) {
+        console.log(`[Worker ${process.pid}]   ${i + 1}. ${possiblePaths[i]}`);
+        if (fs.existsSync(possiblePaths[i])) {
+          chromePath = possiblePaths[i];
+          console.log(`[Worker ${process.pid}]   ✅ 找到有效路径: ${chromePath}`);
+          break;
+        } else {
+          console.log(`[Worker ${process.pid}]   ❌ 路径不存在`);
+        }
+      }
+    } else {
+      execDir = path.dirname(process.execPath);
+      console.log('此版本仅支持Windows平台');
+    }
+  } else {
+    const projectDir = path.join(__dirname, '..');
+    console.log(`[Worker ${process.pid}] 开发环境项目目录: ${projectDir}`);
+    
+    if (platform === 'win32') {
+      chromePath = path.join(projectDir, 'chrome', 'win64-116.0.5793.0', 'chrome-win64', 'chrome.exe');
+    } else {
+      console.log('此版本仅支持Windows平台');
+    }
+  }
+  
+  if (!chromePath) {
+    console.error(`[Worker ${process.pid}] ❌ 无法找到Chrome可执行文件`);
+    console.error(`[Worker ${process.pid}] 请确保Chrome已正确安装或打包到应用程序中`);
+    throw new Error('Chrome可执行文件未找到');
+  }
+  
+  console.log(`[Worker ${process.pid}] ✅ 最终Chrome路径: ${chromePath}`);
+  console.log(`[Worker ${process.pid}] ==================\n`);
+  return chromePath;
+};
 
 // 延迟函数
 const delay = (min, max) => {
@@ -167,8 +253,6 @@ const saveScreenshot = async (page, name) => {
   try {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `${name}_${timestamp}.png`;
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
     const screenshotPath = path.join(__dirname, '..', 'screenshots', filename);
     
     // 确保screenshots目录存在
@@ -1040,7 +1124,18 @@ const processEditPageDirectly = async (page, itemIndex) => {
 // 工作进程主函数
 const workerMain = async () => {
   const args = process.argv.slice(2);
-  const taskData = JSON.parse(args[0]);
+  const tempFile = args[0]; // 现在第一个参数是临时文件路径
+  
+  let taskData;
+  try {
+    // 从临时文件读取数据
+    const fileContent = fs.readFileSync(tempFile, 'utf8');
+    taskData = JSON.parse(fileContent);
+    console.log(`[Worker ${process.pid}] 从临时文件读取数据: ${tempFile}`);
+  } catch (error) {
+    console.error(`[Worker ${process.pid}] 读取临时文件失败: ${error.message}`);
+    process.exit(1);
+  }
   
   const { itemIndex, pageNumber, searchKeyword, targetUrl, editUrl, authData } = taskData;
   
@@ -1050,21 +1145,49 @@ const workerMain = async () => {
   try {
     console.log(`[Worker ${process.pid}] 🚀 启动工作进程处理第 ${itemIndex + 1} 条数据...`);
     
-    // 启动独立的浏览器实例
-    browser = await puppeteer.launch({
-      headless: false,
-      devtools: false,
-      slowMo: 100,
-      defaultViewport: null,
-      args: [
-        '--start-maximized',
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-web-security',
-        '--disable-features=VizDisplayCompositor'
-      ]
-    });
+    // 获取Chrome可执行文件路径
+    const chromePath = getChromePath();
+    
+    console.log(`[Worker ${process.pid}] === 启动独立浏览器实例 ===`);
+    console.log(`[Worker ${process.pid}] 使用Chrome路径: ${chromePath}`);
+    
+    try {
+      // 启动独立的浏览器实例
+      browser = await puppeteer.launch({
+        executablePath: chromePath, // 指定Chrome可执行文件路径
+        headless: false,
+        devtools: false,
+        slowMo: 100,
+        defaultViewport: null,
+        args: [
+          '--start-maximized',
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-web-security',
+          '--disable-features=VizDisplayCompositor',
+          '--disable-background-timer-throttling',
+          '--disable-renderer-backgrounding'
+        ]
+      });
+      
+      console.log(`[Worker ${process.pid}] ✅ 浏览器实例启动成功`);
+    } catch (launchError) {
+      console.error(`[Worker ${process.pid}] ❌ 浏览器启动失败: ${launchError.message}`);
+      console.error(`[Worker ${process.pid}] Chrome路径: ${chromePath}`);
+      console.error(`[Worker ${process.pid}] 堆栈跟踪: ${launchError.stack}`);
+      
+      // 提供详细的错误信息
+      console.error(`[Worker ${process.pid}] \n=== 工作进程错误诊断 ===`);
+      console.error(`[Worker ${process.pid}] 工作进程ID: ${process.pid}`);
+      console.error(`[Worker ${process.pid}] 可能的原因:`);
+      console.error(`[Worker ${process.pid}] 1. Chrome文件损坏或权限问题`);
+      console.error(`[Worker ${process.pid}] 2. 多个浏览器实例冲突`);
+      console.error(`[Worker ${process.pid}] 3. 系统资源不足`);
+      console.error(`[Worker ${process.pid}] ========================\n`);
+      
+      throw launchError;
+    }
     
     page = await browser.newPage();
     
@@ -1145,12 +1268,22 @@ const workerMain = async () => {
     if (browser) {
       await browser.close();
     }
+    
+    // 清理临时文件
+    try {
+      if (tempFile && fs.existsSync(tempFile)) {
+        fs.unlinkSync(tempFile);
+        console.log(`[Worker ${process.pid}] 清理临时文件: ${tempFile}`);
+      }
+    } catch (error) {
+      console.error(`[Worker ${process.pid}] 清理临时文件失败: ${error.message}`);
+    }
   }
 };
 
 
 
 // 启动工作进程
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (require.main === module) {
   workerMain();
 }

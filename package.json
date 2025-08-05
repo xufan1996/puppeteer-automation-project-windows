@@ -3,17 +3,12 @@
   "version": "1.0.0",
   "description": "Puppeteer 网页自动化抓取工具",
   "main": "server.js",
-  "type": "module",
   "bin": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
     "install-chrome": "npx @puppeteer/browsers install chrome@116.0.5793.0",
-    "prebuild": "npm run install-chrome",
-    "build": "pkg package.json --out-path dist",
-    "build-win": "npm run install-chrome && pkg package.json --targets node18-win-x64 --out-path dist",
-    "build-all": "npm run install-chrome && pkg package.json --targets node18-win-x64,node18-macos-x64,node18-linux-x64 --out-path dist",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "node fix-pkg-chrome-build.js"
   },
   "keywords": [
     "puppeteer",
@@ -32,23 +27,26 @@
     "@puppeteer/browsers": "^1.9.1"
   },
   "devDependencies": {
-    "pkg": "^5.8.1"
   },
   "pkg": {
     "targets": ["node18-win-x64"],
     "assets": [
+      "chrome/**/*",
       "public/**/*",
-      "src/**/*",
+      "src/**/*.js",
       ".env.example",
-      "chrome/**/*"
+      ".puppeteerrc.cjs"
     ],
     "scripts": [
-      "server.js"
+      "server.js",
+      "src/main.js",
+      "src/worker.js"
     ],
     "outputPath": "dist",
     "options": [
       "--no-bytecode",
-      "--public-packages=*"
+      "--public-packages=*",
+      "--compress=Brotli"
     ]
   }
 }

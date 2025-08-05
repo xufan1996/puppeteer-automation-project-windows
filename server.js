@@ -1,24 +1,76 @@
-import express from 'express';
-import cors from 'cors';
-import { spawn } from 'child_process';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import fs from 'fs';
-import dotenv from 'dotenv';
-import os from 'os';
-
-// 配置环境变量
-dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const app = express();
-const PORT = process.env.PORT || 3000;
+const express = require('express');
+const cors = require('cors');
+const { Worker } = require('worker_threads');
+const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+const dotenv = require('dotenv');
+const os = require('os');
 
 // 检测是否为打包后的可执行文件
 const isPkg = typeof process.pkg !== 'undefined';
+
+// 配置环境变量 - 根据环境选择正确的配置文件路径
+if (isPkg) {
+  // 打包环境中，从可执行文件同目录读取
+  const execDir = path.dirname(process.execPath);
+  const envPath = path.join(execDir, '.env');
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+    console.log(`已从 ${envPath} 加载配置`);
+  } else {
+    console.log(`配置文件不存在: ${envPath}`);
+  }
+} else {
+  // 开发环境中，从项目根目录读取
+  dotenv.config();
+  console.log('已从项目根目录加载配置');
+}
+
+// CommonJS中__dirname是内置的，无需定义
+const PORT = process.env.PORT || 3000;
 const isWindows = os.platform() === 'win32';
+
+// 详细的环境信息日志
+const logEnvironmentInfo = () => {
+  console.log('\n=== 环境信息 ===');
+  console.log(`操作系统: ${os.platform()} ${os.arch()}`);
+  console.log(`Node.js版本: ${process.version}`);
+  console.log(`工作目录: ${process.cwd()}`);
+  console.log(`执行路径: ${process.execPath}`);
+  console.log(`__dirname: ${__dirname}`);
+  console.log(`是否为pkg打包: ${isPkg}`);
+  console.log(`是否为Windows: ${isWindows}`);
+  
+  if (isPkg) {
+    console.log(`pkg执行目录: ${path.dirname(process.execPath)}`);
+  }
+  
+  // 检查Chrome目录
+  const chromeDir = path.join(__dirname, 'chrome');
+  if (fs.existsSync(chromeDir)) {
+    console.log(`Chrome目录存在: ${chromeDir}`);
+    try {
+      const chromeContents = fs.readdirSync(chromeDir);
+      console.log(`Chrome目录内容: ${chromeContents.join(', ')}`);
+    } catch (error) {
+      console.log(`读取Chrome目录失败: ${error.message}`);
+    }
+  } else {
+    console.log(`⚠️ Chrome目录不存在: ${chromeDir}`);
+  }
+  
+  // 检查关键环境变量
+  console.log(`COMSPEC: ${process.env.COMSPEC || '未设置'}`);
+  console.log(`PATH前100字符: ${(process.env.PATH || '').substring(0, 100)}`);
+  console.log('===============\n');
+};
+
+// 启动时记录环境信息
+logEnvironmentInfo();
+
+// 创建Express应用
+const app = express();
 
 // 中间件
 app.use(cors());
@@ -43,38 +95,156 @@ const addLog = (message, type = 'info') => {
 };
 
 // Windows特定的进程启动函数
-const startNodeProcess = (scriptPath, env) => {
-  if (isWindows) {
-    // Windows下使用cmd启动
-    return spawn('cmd', ['/c', 'node', scriptPath], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, ...env },
-      cwd: __dirname,
-      windowsHide: true // 隐藏命令行窗口
+const startNodeProcess = (scriptPath, workerData) => {
+  console.log(`=== 启动 Worker 线程 ===`);
+  console.log(`脚本路径: ${scriptPath}`);
+  console.log(`工作目录: ${__dirname}`);
+  
+  try {
+    const worker = new Worker(scriptPath, {
+      workerData: workerData
     });
-  } else {
-    // Unix系统
-    return spawn('node', [scriptPath], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, ...env },
-      cwd: __dirname
-    });
+    
+    console.log(`✅ Worker 线程已启动，Thread ID: ${worker.threadId}`);
+    console.log(`================\n`);
+    
+    return worker;
+    
+  } catch (error) {
+    console.error(`❌ 启动 Worker 线程失败: ${error.message}`);
+    throw error;
   }
 };
 
-// 自动打开浏览器的函数
+// 自动打开浏览器的函数 - pkg兼容版本
 const openBrowser = (url) => {
+  console.log(`尝试打开浏览器: ${url}`);
+  
   try {
     if (isWindows) {
-      spawn('cmd', ['/c', 'start', url], { windowsHide: true });
+      // Windows下的多种启动方式
+      const windowsCommands = [
+        // 方法1: 使用start命令
+        () => {
+          console.log('尝试方法1: start命令');
+          return spawn('cmd', ['/c', 'start', '""', `"${url}"`], { 
+            shell: true, 
+            windowsHide: true,
+            detached: true
+          });
+        },
+        
+        // 方法2: 直接使用start
+        () => {
+          console.log('尝试方法2: 直接start');
+          return spawn('start', [`"${url}"`], { 
+            shell: true, 
+            windowsHide: true,
+            detached: true
+          });
+        },
+        
+        // 方法3: 使用rundll32
+        () => {
+          console.log('尝试方法3: rundll32');
+          return spawn('rundll32', ['url.dll,FileProtocolHandler', url], {
+            windowsHide: true,
+            detached: true
+          });
+        }
+      ];
+      
+      // 尝试每种方法
+      let success = false;
+      for (const commandFunc of windowsCommands) {
+        try {
+          const child = commandFunc();
+          
+          child.on('error', (error) => {
+            console.log(`命令执行失败: ${error.message}`);
+          });
+          
+          child.on('spawn', () => {
+            console.log('✅ 浏览器启动命令执行成功');
+            success = true;
+          });
+          
+          // 如果进程启动成功，跳出循环
+          if (child.pid) {
+            console.log(`进程PID: ${child.pid}`);
+            success = true;
+            break;
+          }
+          
+        } catch (methodError) {
+          console.log(`方法失败: ${methodError.message}`);
+          continue;
+        }
+      }
+      
+      if (!success) {
+        throw new Error('所有Windows浏览器启动方法都失败了');
+      }
+      
     } else if (os.platform() === 'darwin') {
-      spawn('open', [url]);
+      // macOS
+      console.log('尝试macOS打开浏览器');
+      const child = spawn('open', [url], { detached: true });
+      child.on('error', (error) => {
+        throw error;
+      });
     } else {
-      spawn('xdg-open', [url]);
+      // Linux
+      console.log('尝试Linux打开浏览器');
+      const child = spawn('xdg-open', [url], { detached: true });
+      child.on('error', (error) => {
+        throw error;
+      });
     }
+    
+    console.log('✅ 浏览器启动命令已发送');
+    
   } catch (error) {
+    console.error(`❌ 自动打开浏览器失败: ${error.message}`);
     addLog(`无法自动打开浏览器: ${error.message}`, 'warning');
     addLog(`请手动访问: ${url}`, 'info');
+  }
+};
+
+// pkg环境下的安全spawn函数
+const safeSpawn = (command, args, options = {}) => {
+  try {
+    console.log(`执行命令: ${command} ${args ? args.join(' ') : ''}`);
+    
+    const defaultOptions = {
+      windowsHide: true,
+      detached: true,
+      stdio: 'ignore'
+    };
+    
+    const finalOptions = { ...defaultOptions, ...options };
+    
+    if (isPkg && isWindows) {
+      // pkg环境下，确保使用正确的shell
+      finalOptions.shell = true;
+      finalOptions.env = { ...process.env };
+    }
+    
+    const child = spawn(command, args, finalOptions);
+    
+    child.on('error', (error) => {
+      console.error(`命令执行错误: ${error.message}`);
+    });
+    
+    child.on('spawn', () => {
+      console.log(`命令启动成功，PID: ${child.pid}`);
+    });
+    
+    return child;
+    
+  } catch (error) {
+    console.error(`safeSpawn错误: ${error.message}`);
+    throw error;
   }
 };
 
@@ -106,41 +276,49 @@ app.post('/api/start', (req, res) => {
   // 更新环境变量
   process.env.SEARCH_KEYWORD = searchKeyword;
   
-  // 更新 .env 文件
+  // 更新 .env 文件 - 处理打包环境
   try {
     const envContent = `SEARCH_KEYWORD=${searchKeyword}\nMAX_ITEMS=${maxItems}`;
-    fs.writeFileSync(path.join(__dirname, '.env'), envContent, 'utf8');
+    let envPath;
+    
+    if (isPkg) {
+      // 打包环境中，写入到可执行文件同目录下
+      const execDir = path.dirname(process.execPath);
+      envPath = path.join(execDir, '.env');
+    } else {
+      // 开发环境中，写入到项目根目录
+      envPath = path.join(__dirname, '.env');
+    }
+    
+    fs.writeFileSync(envPath, envContent, 'utf8');
+    addLog(`配置已保存到: ${envPath}`, 'info');
   } catch (error) {
     addLog(`写入.env文件失败: ${error.message}`, 'warning');
+    addLog('配置仅在内存中生效，重启后将丢失', 'warning');
   }
 
   addLog(`开始执行自动化任务，关键词: ${searchKeyword}`, 'info');
   
-  // 启动子进程
+  // 启动 Worker 线程
   const scriptPath = path.join(__dirname, 'src', 'main.js');
   currentProcess = startNodeProcess(scriptPath, {
-    SEARCH_KEYWORD: searchKeyword,
-    MAX_ITEMS: maxItems
+    searchKeyword: searchKeyword,
+    maxItems: maxItems,
+    targetUrl: process.env.TARGET_URL || 'https://work.weixin.qq.com/wework_admin/frame#/chatGroup'
   });
   
   isRunning = true;
   
-  // 监听输出
-  currentProcess.stdout.on('data', (data) => {
-    const message = data.toString().trim();
-    if (message) {
-      addLog(message, 'info');
+  // 监听 Worker 消息
+  currentProcess.on('message', (message) => {
+    if (message.type === 'log') {
+      addLog(message.data, 'info');
+    } else if (message.type === 'error') {
+      addLog(message.data, 'error');
     }
   });
   
-  currentProcess.stderr.on('data', (data) => {
-    const message = data.toString().trim();
-    if (message) {
-      addLog(message, 'error');
-    }
-  });
-  
-  currentProcess.on('close', (code) => {
+  currentProcess.on('exit', (code) => {
     isRunning = false;
     currentProcess = null;
     addLog(`任务完成，退出代码: ${code}`, code === 0 ? 'success' : 'error');
@@ -161,12 +339,8 @@ app.post('/api/stop', (req, res) => {
   }
   
   try {
-    if (isWindows) {
-      // Windows下强制终止进程
-      spawn('taskkill', ['/pid', currentProcess.pid, '/f', '/t'], { windowsHide: true });
-    } else {
-      currentProcess.kill('SIGTERM');
-    }
+    // 终止 Worker 线程
+    currentProcess.terminate();
     addLog('用户手动停止任务', 'warning');
   } catch (error) {
     addLog(`停止任务失败: ${error.message}`, 'error');
@@ -201,7 +375,23 @@ app.listen(PORT, () => {
 process.on('SIGINT', () => {
   addLog('收到关闭信号，正在关闭服务器...', 'warning');
   if (currentProcess) {
-    currentProcess.kill('SIGTERM');
+    try {
+      if (isWindows) {
+        // Windows下使用taskkill强制终止进程
+        safeSpawn('taskkill', ['/pid', currentProcess.pid, '/f', '/t'], {
+          shell: true,
+          windowsHide: true
+        });
+      } else {
+        currentProcess.kill('SIGTERM');
+      }
+    } catch (killError) {
+      console.error(`终止进程失败: ${killError.message}`);
+      // 尝试使用Worker的terminate方法
+      if (currentProcess.terminate) {
+        currentProcess.terminate();
+      }
+    }
   }
   process.exit(0);
 });
@@ -209,7 +399,23 @@ process.on('SIGINT', () => {
 process.on('SIGTERM', () => {
   addLog('收到终止信号，正在关闭服务器...', 'warning');
   if (currentProcess) {
-    currentProcess.kill('SIGTERM');
+    try {
+      if (isWindows) {
+        // Windows下使用taskkill强制终止进程
+        safeSpawn('taskkill', ['/pid', currentProcess.pid, '/f', '/t'], {
+          shell: true,
+          windowsHide: true
+        });
+      } else {
+        currentProcess.kill('SIGTERM');
+      }
+    } catch (killError) {
+      console.error(`终止进程失败: ${killError.message}`);
+      // 尝试使用Worker的terminate方法
+      if (currentProcess.terminate) {
+        currentProcess.terminate();
+      }
+    }
   }
   process.exit(0);
 });

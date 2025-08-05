@@ -9,11 +9,15 @@ Puppeteer 自动化工具 - Windows版本
 5. 实时查看执行日志
 6. 可随时点击"停止执行"终止任务
 
+开发构建：
+如需重新构建可执行文件：
+1. 安装依赖：npm install
+2. 构建：npm run build
+
 注意事项：
 - 首次运行时Windows防火墙可能会询问，请选择"允许访问"
 - 确保网络连接正常
 - 程序运行期间请勿关闭命令行窗口
-- 结果文件保存在 output 目录下
 - 截图文件保存在 screenshots 目录下
 
 故障排除：
@@ -22,4 +26,5 @@ Puppeteer 自动化工具 - Windows版本
 - 遇到问题请查看命令行窗口的错误信息
 
 技术支持：
-如有问题请联系开发人员
+- GitHub: https://github.com/NaN-ztn/puppeteer-automation-project-windows
+- 如有问题请提交Issue
