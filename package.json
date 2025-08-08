@@ -8,7 +8,11 @@
     "start": "node server.js",
     "dev": "node server.js",
     "install-chrome": "npx @puppeteer/browsers install chrome@116.0.5793.0",
-    "build": "node fix-pkg-chrome-build.js"
+    "build": "node fix-pkg-chrome-build.js",
+    "build-win": "pkg . --targets node18-win-x64 --output dist/puppeteer-automation.exe",
+    "build-mac": "pkg . --targets node18-macos-x64 --output dist/puppeteer-automation",
+    "build-mac-arm": "pkg . --targets node18-macos-arm64 --output dist/puppeteer-automation-arm64",
+    "build-all": "npm run build-win && npm run build-mac && npm run build-mac-arm"
   },
   "keywords": [
     "puppeteer",
@@ -29,7 +33,7 @@
   "devDependencies": {
   },
   "pkg": {
-    "targets": ["node18-win-x64"],
+    "targets": ["node18-win-x64", "node18-macos-x64", "node18-macos-arm64"],
     "assets": [
       "chrome/**/*",
       "public/**/*",

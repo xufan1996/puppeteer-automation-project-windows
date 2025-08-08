@@ -6,6 +6,7 @@ const os = require('os');
 
 function getPkgChromePath() {
   const platform = os.platform();
+  const arch = os.arch();
   const isPkg = typeof process.pkg !== 'undefined';
   
   if (!isPkg) {
@@ -13,6 +14,12 @@ function getPkgChromePath() {
     const projectDir = path.join(__dirname, '..');
     if (platform === 'win32') {
       return path.join(projectDir, 'chrome', 'win64-116.0.5793.0', 'chrome-win64', 'chrome.exe');
+    } else if (platform === 'darwin') {
+      if (arch === 'arm64') {
+        return path.join(projectDir, 'chrome', 'mac_arm-116.0.5793.0', 'chrome-mac-arm64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing');
+      } else {
+        return path.join(projectDir, 'chrome', 'mac-116.0.5793.0', 'chrome-mac-x64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing');
+      }
     }
   } else {
     // pkg环境
@@ -56,6 +63,66 @@ function getPkgChromePath() {
             if (item.isFile() && item.name === 'chrome.exe') {
               return fullPath;
             } else if (item.isDirectory() && (item.name.includes('chrome') || item.name.includes('win64'))) {
+              const result = searchChrome(fullPath);
+              if (result) return result;
+            }
+          }
+        } catch (error) {
+          console.log('搜索错误:', error.message);
+        }
+        return null;
+      };
+      
+      console.log('开始搜索Chrome可执行文件...');
+      const foundPath = searchChrome(execDir);
+      if (foundPath) {
+        console.log('✅ 搜索找到Chrome:', foundPath);
+        return foundPath;
+      }
+    } else if (platform === 'darwin') {
+      const possiblePaths = [
+        // 标准路径（与dist目录结构匹配）
+        path.join(execDir, 'chrome', 'mac-116.0.5793.0', 'chrome-mac-x64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'),
+        path.join(execDir, 'chrome', 'mac_arm-116.0.5793.0', 'chrome-mac-arm64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'),
+        // 备用路径1
+        path.join(execDir, 'chrome-mac-x64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'),
+        path.join(execDir, 'chrome-mac-arm64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'),
+        // 备用路径2
+        path.join(execDir, 'chrome', 'chrome-mac-x64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'),
+        path.join(execDir, 'chrome', 'chrome-mac-arm64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'),
+        // 备用路径3：相对于snapshot目录
+        path.resolve(process.cwd(), 'chrome', 'mac-116.0.5793.0', 'chrome-mac-x64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'),
+        path.resolve(process.cwd(), 'chrome', 'mac_arm-116.0.5793.0', 'chrome-mac-arm64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'),
+        // 备用路径4：在工作目录中查找
+        path.join(process.cwd(), 'chrome', 'mac-116.0.5793.0', 'chrome-mac-x64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'),
+        path.join(process.cwd(), 'chrome', 'mac_arm-116.0.5793.0', 'chrome-mac-arm64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing')
+      ];
+      
+      console.log('pkg模式Chrome路径检测 (macOS):');
+      console.log('execPath:', process.execPath);
+      console.log('execDir:', execDir);
+      console.log('cwd:', process.cwd());
+      console.log('arch:', arch);
+      
+      for (let i = 0; i < possiblePaths.length; i++) {
+        console.log(`尝试路径 ${i + 1}: ${possiblePaths[i]}`);
+        if (fs.existsSync(possiblePaths[i])) {
+          console.log('✅ 找到Chrome:', possiblePaths[i]);
+          return possiblePaths[i];
+        } else {
+          console.log('❌ 路径不存在');
+        }
+      }
+      
+      // 最后尝试：搜索整个execDir
+      const searchChrome = (searchDir) => {
+        try {
+          const items = fs.readdirSync(searchDir, { withFileTypes: true });
+          for (const item of items) {
+            const fullPath = path.join(searchDir, item.name);
+            if (item.isFile() && item.name === 'Google Chrome for Testing') {
+              return fullPath;
+            } else if (item.isDirectory() && (item.name.includes('chrome') || item.name.includes('mac') || item.name === 'Contents' || item.name === 'MacOS')) {
               const result = searchChrome(fullPath);
               if (result) return result;
             }

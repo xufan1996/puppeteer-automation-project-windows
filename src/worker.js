@@ -85,6 +85,9 @@ const saveScreenshot = async (page, name) => {
   }
 };
 
+// 页面跳转等待函数
+// waitForPageTransition 函数已移除，使用 smartWait 替代以提高性能
+
 
 
 // 执行群聊创建步骤的函数
@@ -398,19 +401,19 @@ const handleGroupNameInput = async (page, processedTitle, itemIndex) => {
                 console.log('✅ 使用JavaScript成功点击确定按钮');
               }
               
-              // 使用优化的页面跳转等待机制
-              console.log('等待群聊创建完成...');
-              const transitionSuccess = await waitForPageTransition(page, {
-                timeout: 15000,
-                waitForUrlChange: true,
-                waitForElementDisappear: '.qui_dialog_foot',
-                waitForNetworkIdle: true
+              // 简化等待机制：只等待对话框消失
+              console.log('等待对话框关闭...');
+              const dialogClosed = await smartWait(page, {
+                selector: '.qui_dialog_foot',
+                action: 'hidden',
+                timeout: 5000,
+                fallbackDelay: [800, 1200]
               });
               
-              if (transitionSuccess) {
-                console.log('✅ 群聊创建操作完成，页面已跳转');
+              if (dialogClosed) {
+                console.log('✅ 对话框已关闭，操作完成');
               } else {
-                console.log('⚠️ 页面跳转等待超时，但继续执行后续操作');
+                console.log('⚠️ 对话框关闭检测超时，使用回退延迟后继续');
               }
               
               // 继续后续操作
@@ -438,11 +441,12 @@ const handleGroupNameInput = async (page, processedTitle, itemIndex) => {
                 await btn.click();
                 console.log('✅ 备用方法点击成功');
                 
-                // 使用页面跳转等待机制
-                await waitForPageTransition(page, {
-                  timeout: 15000,
-                  waitForElementDisappear: '.qui_dialog_foot',
-                  waitForNetworkIdle: true
+                // 简化等待：只等待对话框消失
+                await smartWait(page, {
+                  selector: '.qui_dialog_foot',
+                  action: 'hidden',
+                  timeout: 5000,
+                  fallbackDelay: [800, 1200]
                 });
                 
                 await handleSaveButton(page, itemIndex);
@@ -547,7 +551,10 @@ const handleSaveButton = async (page, itemIndex) => {
         try {
           // 点击保存按钮
           await saveBtn.click();
+          // 找到第554行的 console.log('✅ 成功点击保存按钮'); 后添加
           console.log('✅ 成功点击保存按钮');
+          console.log(`[Worker ${process.pid}] 修改${validTitle}为${processedTitle}`);
+          
           
           // 等待保存操作完成（短暂等待，不等待页面跳转）
           await smartWait(page, { fallbackDelay: [1000, 2000] });

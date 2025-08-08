@@ -51,7 +51,17 @@ const getChromePath = () => {
       execDir = path.dirname(process.execPath);
       console.log(`pkg执行目录: ${execDir}`);
       
+      const arch = os.arch();
       const possiblePaths = [
+        // 根据架构选择对应的Chrome路径
+        arch === 'arm64' 
+          ? path.join(execDir, 'chrome', 'mac_arm-116.0.5793.0', 'chrome-mac-arm64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing')
+          : path.join(execDir, 'chrome', 'mac-116.0.5793.0', 'chrome-mac-x64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'),
+        // 备用路径
+        arch === 'arm64'
+          ? path.join(execDir, 'chrome-mac-arm64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing')
+          : path.join(execDir, 'chrome-mac-x64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'),
+        // 兼容旧版本路径
         path.join(execDir, 'chrome', 'mac-116.0.5793.0', 'chrome-mac-x64', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'),
         path.join(execDir, 'chrome-mac-x64', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'),
         path.join(execDir, 'chrome', 'chrome-mac-x64', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'),

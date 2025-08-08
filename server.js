@@ -83,15 +83,37 @@ let isRunning = false;
 let logs = [];
 
 // 添加日志
+// 在const PORT = process.env.PORT || 3000; 之后添加
+// 创建日志目录
+const logsDir = path.join(__dirname, 'logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
+
+// 修改addLog函数，添加文件日志记录
 const addLog = (message, type = 'info') => {
   const timestamp = new Date().toLocaleString();
   const logEntry = { timestamp, message, type };
   logs.push(logEntry);
+  
   // 保持最新的100条日志
   if (logs.length > 100) {
     logs = logs.slice(-100);
   }
+  
+  // 控制台输出
   console.log(`[${timestamp}] ${type.toUpperCase()}: ${message}`);
+  
+  // 文件日志记录
+  const logFileName = new Date().toISOString().split('T')[0] + '.log';
+  const logFilePath = path.join(logsDir, logFileName);
+  const logLine = `[${timestamp}] ${type.toUpperCase()}: ${message}\n`;
+  
+  try {
+    fs.appendFileSync(logFilePath, logLine, 'utf8');
+  } catch (error) {
+    console.error('写入日志文件失败:', error.message);
+  }
 };
 
 // Windows特定的进程启动函数
@@ -418,4 +440,54 @@ process.on('SIGTERM', () => {
     }
   }
   process.exit(0);
+});
+
+// 在API路由部分添加获取配置的端点
+app.get('/api/config', (req, res) => {
+  res.json({
+    searchKeyword: process.env.SEARCH_KEYWORD || '',
+    maxItems: parseInt(process.env.MAX_ITEMS) || -1
+  });
+});
+
+// 日志下载API
+app.get('/api/logs/download', (req, res) => {
+  try {
+    const { date } = req.query;
+    let logFileName;
+    
+    if (date) {
+      logFileName = date + '.log';
+    } else {
+      logFileName = new Date().toISOString().split('T')[0] + '.log';
+    }
+    
+    const logFilePath = path.join(logsDir, logFileName);
+    
+    if (!fs.existsSync(logFilePath)) {
+      return res.status(404).json({ error: '日志文件不存在' });
+    }
+    
+    res.download(logFilePath, logFileName);
+  } catch (error) {
+    res.status(500).json({ error: '下载日志失败: ' + error.message });
+  }
+});
+
+// 获取可用日志文件列表
+app.get('/api/logs/files', (req, res) => {
+  try {
+    const files = fs.readdirSync(logsDir)
+      .filter(file => file.endsWith('.log'))
+      .map(file => ({
+        name: file,
+        size: fs.statSync(path.join(logsDir, file)).size,
+        date: file.replace('.log', '')
+      }))
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    res.json({ files });
+  } catch (error) {
+    res.status(500).json({ error: '获取日志文件列表失败: ' + error.message });
+  }
 });

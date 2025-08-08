@@ -4,10 +4,29 @@ class AutomationController {
         this.autoScroll = true;
         this.initializeElements();
         this.bindEvents();
+        this.loadConfig(); // 添加这行：页面加载时加载配置
         this.startStatusPolling();
+        this.loadLogFiles();
     }
 
-    initializeElements() {
+    // 添加加载配置的方法
+    async loadConfig() {
+        try {
+            const response = await fetch('/api/config');
+            const config = await response.json();
+            
+            this.elements.searchKeyword.value = config.searchKeyword;
+            this.elements.maxItems.value = config.maxItems;
+            
+            this.showMessage(`已从.env文件加载配置：关键词="${config.searchKeyword}"，最大数量=${config.maxItems}`, 'info');
+        } catch (error) {
+            console.error('加载配置失败:', error);
+            this.showMessage('无法从.env文件加载配置，使用默认值', 'warning');
+        }
+    }
+
+
+initializeElements() {
         this.elements = {
             searchKeyword: document.getElementById('searchKeyword'),
             maxItems: document.getElementById('maxItems'),
@@ -16,6 +35,8 @@ class AutomationController {
             clearLogsBtn: document.getElementById('clearLogsBtn'),
             refreshLogsBtn: document.getElementById('refreshLogsBtn'),
             autoScrollBtn: document.getElementById('autoScrollBtn'),
+            downloadLogsBtn: document.getElementById('downloadLogsBtn'),
+            logFilesSelect: document.getElementById('logFilesSelect'),
             statusIndicator: document.getElementById('statusIndicator'),
             statusText: document.getElementById('statusText'),
             logsContainer: document.getElementById('logsContainer')
@@ -28,6 +49,7 @@ class AutomationController {
         this.elements.clearLogsBtn.addEventListener('click', () => this.clearLogs());
         this.elements.refreshLogsBtn.addEventListener('click', () => this.refreshLogs());
         this.elements.autoScrollBtn.addEventListener('click', () => this.toggleAutoScroll());
+        this.elements.downloadLogsBtn.addEventListener('click', () => this.downloadLogs()); // 添加这行
     }
 
     async startAutomation() {
@@ -164,11 +186,57 @@ class AutomationController {
             } catch (error) {
                 console.error('状态轮询失败:', error);
             }
-        }, 2000); // 每2秒检查一次状态
+        }, 2000);
+    }
+
+    // 将这三个方法移动到类内部
+    async downloadLogs() {
+        const selectedFile = this.elements.logFilesSelect.value;
+        const url = selectedFile ? `/api/logs/download?date=${selectedFile}` : '/api/logs/download';
+        
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('下载失败');
+            
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = selectedFile ? `${selectedFile}.log` : new Date().toISOString().split('T')[0] + '.log';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(downloadUrl);
+            
+            this.showMessage('日志下载成功', 'success');
+        } catch (error) {
+            this.showMessage('下载日志失败: ' + error.message, 'error');
+        }
+    }
+
+    async loadLogFiles() {
+        try {
+            const response = await fetch('/api/logs/files');
+            const result = await response.json();
+            
+            this.elements.logFilesSelect.innerHTML = '<option value="">今日日志</option>';
+            
+            result.files.forEach(file => {
+                const option = document.createElement('option');
+                option.value = file.date;
+                option.textContent = `${file.date} (${(file.size / 1024).toFixed(1)}KB)`;
+                this.elements.logFilesSelect.appendChild(option);
+            });
+        } catch (error) {
+            console.error('加载日志文件列表失败:', error);
+            this.showMessage('加载日志文件列表失败: ' + error.message, 'error');
+        }
     }
 }
 
-// 初始化应用
+// 移除类外部的重复方法定义
+// 只保留这个初始化代码
 document.addEventListener('DOMContentLoaded', () => {
     new AutomationController();
 });
+
