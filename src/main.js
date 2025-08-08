@@ -1,124 +1,84 @@
-const { parentPort, workerData } = require('worker_threads');
 const puppeteer = require('puppeteer');
 const fs = require('fs');
-const dotenv = require('dotenv');
 const path = require('path');
 const os = require('os');
 const { spawn } = require('child_process');
-const { getPkgChromePath } = require('./pkg-chrome-helper');
+const { getChromePath, delay, smartWait } = require('./chrome-path');
+const { loadEnvConfig } = require('./env-config');
 
-// 检测是否为打包后的可执行文件
-const isPkg = typeof process.pkg !== 'undefined';
-
-// 获取Chrome可执行文件路径 - pkg优化版本
-const getChromePath = () => {
-  console.log('=== Chrome路径检测（pkg优化版）===');
-  
-  // 首先尝试pkg兼容的路径检测
-  const pkgPath = getPkgChromePath();
-  if (pkgPath && fs.existsSync(pkgPath)) {
-    console.log('✅ pkg兼容路径检测成功:', pkgPath);
-    return pkgPath;
-  }
-  
-  // 如果pkg方法失败，使用原始方法
-  const platform = os.platform();
-  const isPkg = typeof process.pkg !== 'undefined';
-  
-  console.log(`平台: ${platform}, 架构: ${os.arch()}, pkg模式: ${isPkg}`);
-  console.log(`process.execPath: ${process.execPath}`);
-  console.log(`__dirname: ${__dirname}`);
-  
-  let chromePath;
-  
-  if (isPkg) {
-    let execDir;
-    
-    if (platform === 'win32') {
-      execDir = path.dirname(process.execPath);
-      console.log(`pkg执行目录: ${execDir}`);
-      
-      const possiblePaths = [
-        path.join(execDir, 'chrome', 'win64-116.0.5793.0', 'chrome-win64', 'chrome.exe'),
-        path.join(execDir, 'chrome-win64', 'chrome.exe'),
-        path.join(execDir, 'chrome', 'chrome-win64', 'chrome.exe'),
-        path.resolve(execDir, 'chrome', 'win64-116.0.5793.0', 'chrome-win64', 'chrome.exe')
-      ];
-      
-      console.log('尝试的Chrome路径:');
-      for (let i = 0; i < possiblePaths.length; i++) {
-        console.log(`  ${i + 1}. ${possiblePaths[i]}`);
-        if (fs.existsSync(possiblePaths[i])) {
-          chromePath = possiblePaths[i];
-          console.log(`  ✅ 找到有效路径: ${chromePath}`);
-          break;
-        } else {
-          console.log(`  ❌ 路径不存在`);
-        }
-      }
-    } else {
-      throw new Error('此版本仅支持Windows平台');
-    }
-  } else {
-    const projectDir = path.join(__dirname, '..');
-    console.log(`开发环境项目目录: ${projectDir}`);
-    
-    if (platform === 'win32') {
-      chromePath = path.join(projectDir, 'chrome', 'win64-116.0.5793.0', 'chrome-win64', 'chrome.exe');
-    } else {
-      throw new Error('此版本仅支持Windows平台');
-    }
-  }
-  
-  if (!chromePath) {
-    console.error('❌ 无法找到Chrome可执行文件');
-    console.error('请确保Chrome已正确安装或打包到应用程序中');
-    throw new Error('Chrome可执行文件未找到');
-  }
-  
-  console.log(`✅ 最终Chrome路径: ${chromePath}`);
-  console.log(`==================\n`);
-  return chromePath;
-};
-
-// 加载环境变量 - 根据环境选择正确的配置文件路径
-if (isPkg) {
-  // 打包环境中，从可执行文件同目录读取
-  const execDir = path.dirname(process.execPath);
-  const envPath = path.join(execDir, '.env');
-  if (fs.existsSync(envPath)) {
-    dotenv.config({ path: envPath });
-  }
-} else {
-  // 开发环境中，从项目根目录读取
-  dotenv.config();
-}
+// 加载环境配置
+loadEnvConfig();
 
 // 日志函数
-const log = (message, type = 'log') => {
+// 在文件顶部添加
+const { parentPort } = require('worker_threads');
+
+// 修改日志函数，使用Worker通信
+const log = (message) => {
+  console.log(message);
   if (parentPort) {
-    parentPort.postMessage({ type, data: message });
-  } else {
-    console.log(message);
+    parentPort.postMessage({ type: 'log', data: message });
   }
 };
 
 const logError = (message) => {
+  console.error(message);
   if (parentPort) {
     parentPort.postMessage({ type: 'error', data: message });
-  } else {
-    console.error(message);
   }
 };
 
+// 在文件底部添加
+if (parentPort) {
+  parentPort.on('message', (message) => {
+    if (message.type === 'start') {
+      // 启动主函数
+      main(message.data);
+    }
+  });
+}
+
+// 修改main函数，添加错误处理
+const main = async (workerData) => {
+  try {
+    log(`[Worker ${process.pid}] 🚀 启动工作进程...`);
+    
+    const { searchKeyword, maxItems, targetUrl } = workerData;
+    
+    // 原有的主函数逻辑...
+    
+  } catch (error) {
+    logError(`[Worker ${process.pid}] 任务执行错误: ${error.message}`);
+    if (parentPort) {
+      parentPort.postMessage({ type: 'error', data: error.message });
+    }
+    process.exit(1);
+  }
+};
+
+// 启动主函数
+if (require.main === module) {
+  // 直接运行模式（兼容旧版本）
+  const workerData = {
+    searchKeyword: process.env.SEARCH_KEYWORD || '凡铭',
+    maxItems: parseInt(process.env.MAX_ITEMS) || -1,
+    targetUrl: process.env.TARGET_URL || 'https://work.weixin.qq.com/wework_admin/frame#/chatGroup'
+  };
+  
+  main(workerData);
+} else {
+  // Worker线程模式
+  if (parentPort) {
+    parentPort.on('message', (message) => {
+      if (message.type === 'start') {
+        main(message.data);
+      }
+    });
+  }
+}
+
 // 全局变量存储认证信息
 global.authData = null;
-
-// 延迟函数
-const delay = (min, max) => {
-  const ms = Math.floor(Math.random() * (max - min + 1)) + min;
-  return new Promise(resolve => setTimeout(resolve, ms));
-};
 
 // 处理列表数据的函数（多线程版本）
 const processListData = async (page, maxItems = -1) => {
@@ -126,7 +86,7 @@ const processListData = async (page, maxItems = -1) => {
     log('开始处理列表数据...');
     
     // 获取搜索关键词配置
-    const searchKeyword = process.env.SEARCH_KEYWORD || workerData?.searchKeyword;
+    const searchKeyword = process.env.SEARCH_KEYWORD;
     let hasSearched = false;
     
     // 如果配置了搜索关键词，先执行搜索
@@ -143,7 +103,7 @@ const processListData = async (page, maxItems = -1) => {
           
           // 确保搜索框在视窗中可见
           await searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          await delay(1000, 2000);
+          await smartWait(page, { fallbackDelay: [800, 1500] });
           
           // 清空搜索框并输入搜索关键词
           await searchInput.click();
@@ -158,11 +118,12 @@ const processListData = async (page, maxItems = -1) => {
           
           // 等待搜索结果加载
           log('等待搜索结果加载...');
-          await delay(1000, 2000);
+          await smartWait(page, { fallbackDelay: [800, 1500] });
           
           // 可选：等待页面网络请求完成
           try {
             await page.waitForLoadState('networkidle', { timeout: 10000 });
+            await smartWait(page, { selector: 'body', action: 'stable', timeout: 5000 });
             log('✅ 搜索结果加载完成');
           } catch (networkError) {
             log('⚠️ 网络空闲等待超时，但继续执行');
@@ -195,9 +156,11 @@ const processListData = async (page, maxItems = -1) => {
       effectiveMaxItems = maxItems;
     }
     
+    // 在while循环开始前添加全局数据收集数组
     let currentPage = 1;
     let totalProcessedCount = 0;
     let hasMorePages = true;
+    const allValidItems = []; // 新增：收集所有页面的有效数据
     
     // 获取主浏览器实例
     const browser = page.browser();
@@ -206,55 +169,197 @@ const processListData = async (page, maxItems = -1) => {
       log(`\n=== 处理第 ${currentPage} 页数据 ===`);
       
       // 等待页面加载完成
-      await delay(1000, 2000);
+      await smartWait(page, { selector: '.ww_table.csPlugin_index_table tbody tr', action: 'visible', timeout: 3000 });
       
       // 查找列表项 - 专门查找指定表格下的tbody中的tr元素
       const listItems = await page.$$('.ww_table.csPlugin_index_table tbody tr');
       log(`当前页面找到 ${listItems.length} 个列表项`);
       
       if (listItems.length === 0) {
-        log('当前页面没有找到列表项，结束处理');
+        log('当前页面没有找到列表项，结束收集');
         break;
       }
       
-      // 计算本页需要处理的数据数量
-      let itemsToProcess = listItems.length;
-      if (effectiveMaxItems !== -1) {
-        const remaining = effectiveMaxItems - totalProcessedCount;
-        itemsToProcess = Math.min(itemsToProcess, remaining);
+      // 数据筛选：遍历每个列表项，查找指定class元素并进行HK和DD检测
+      log('\n🔍 开始数据筛选，检测包含HK或DD的群组...');
+      const validItems = [];
+      
+      // 遍历每个列表项进行单独检测
+      for (let i = 0; i < listItems.length; i++) {
+        const currentItem = listItems[i];
+        log(`开始处理第 ${i + 1} 个列表项...`);
+        
+        // 查找当前列表项中的csPlugin_index_row_member ww_groupSelBtn_WithoutEdit元素
+        const memberElements = await currentItem.$$('.csPlugin_index_row_member.ww_groupSelBtn_WithoutEdit');
+        
+        if (memberElements.length > 0) {
+          log(`在第 ${i + 1} 个列表项中找到 ${memberElements.length} 个csPlugin_index_row_member ww_groupSelBtn_WithoutEdit元素`);
+          
+          // 如果有多个，选择最后一个进行悬停操作
+          const lastElement = memberElements[memberElements.length - 1];
+          const spanElement = await lastElement.$('span.ww_groupSelBtn_item_text');
+          
+          if (spanElement) {
+            log(`找到第 ${i + 1} 个列表项最后一个元素的span.ww_groupSelBtn_item_text，开始模拟鼠标悬停...`);
+            
+            try {
+              // 确保元素在视窗中可见
+              await spanElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              await smartWait(page, { fallbackDelay: [300, 800] });
+              
+              // 模拟鼠标悬停
+              await spanElement.hover();
+              log(`✅ 成功模拟鼠标悬停在第 ${i + 1} 个列表项的最后一个span.ww_groupSelBtn_item_text元素上`);
+              
+              // 等待悬停效果显示
+              await smartWait(page, { selector: '.customer_qunCard_title', action: 'visible', timeout: 3000 });
+              
+              // 获取悬停后显示的群卡片标题
+              const titleElement = await page.$('.customer_qunCard_title');
+              let titleText = '';
+              if (titleElement) {
+                titleText = await page.evaluate(el => el.textContent || el.innerText, titleElement);
+                log(`第 ${i + 1} 个列表项的群名称标题: ${titleText}`);
+              }
+              
+              // 获取悬停后显示的群管理员信息
+              const adminElement = await page.$('.customer_qunCard_adminInfo');
+              let adminText = '';
+              if (adminElement) {
+                adminText = await page.evaluate(el => el.textContent || el.innerText, adminElement);
+                log(`第 ${i + 1} 个列表项的群主信息: ${adminText}`);
+              }
+              
+              // 对群卡片标题进行HK和DD检测
+              if (titleText && (titleText.includes('HK') || titleText.includes('DD') || titleText.includes('hk') || titleText.includes('dd'))) {
+                log(`第 ${i + 1} 个列表项发现HK或DD文字: ${titleText}`);
+                
+                // 获取编辑链接并添加到处理队列
+                const editButton = await currentItem.$('.js_csPlugin_go2edit');
+                if (editButton) {
+                  try {
+                    const editUrl = await editButton.evaluate(el => el.href);
+                    validItems.push({
+                      index: i,
+                      editUrl: editUrl,
+                      validTitle: titleText,
+                      validAdminInfo: adminText || ''
+                    });
+                    log(`✅ 第 ${i + 1} 项添加到处理队列: ${editUrl}`);
+                  } catch (error) {
+                    log(`⚠️ 第 ${i + 1} 项获取编辑链接失败: ${error.message}`);
+                  }
+                }
+              } else if (titleText) {
+                log(`第 ${i + 1} 个列表项标题不包含HK或DD，跳过: ${titleText}`);
+              }
+              
+              // 移开鼠标，避免影响后续操作
+              await page.mouse.move(0, 0);
+              await smartWait(page, { selector: 'body', action: 'stable', timeout: 1000 });
+              
+            } catch (error) {
+              log(`⚠️ 第 ${i + 1} 个列表项悬停操作失败: ${error.message}`);
+            }
+          } else {
+            log(`⚠️ 在第 ${i + 1} 个列表项的最后一个csPlugin_index_row_member元素中未找到span.ww_groupSelBtn_item_text`);
+          }
+        } else {
+          log(`⚠️ 在第 ${i + 1} 个列表项中未找到csPlugin_index_row_member ww_groupSelBtn_WithoutEdit元素`);
+        }
       }
       
-      log(`\n🚀 启动 ${itemsToProcess} 个并发进程处理数据...`);
+      log(`\n📊 第${currentPage}页数据筛选完成: 共检测 ${listItems.length} 项，通过 ${validItems.length} 项`);
       
-      // 创建并发进程任务数组
+      // 将当前页的有效数据添加到全局数组
+      allValidItems.push(...validItems);
+      
+      // 检查是否有下一页（立即翻页，不处理当前页数据）
+      log('\n检查是否有下一页...');
+      
+      // 重新获取下一页按钮元素，检查是否有disabled属性
+      const nextPageButton = await page.$('.ww_pageNav_info_arrowWrap.js_pager_nextPage');
+      
+      if (nextPageButton) {
+        // 检查disabled属性
+        const hasDisabled = await page.evaluate(el => {
+          return el.hasAttribute('disabled') && el.getAttribute('disabled') === 'disabled';
+        }, nextPageButton);
+        
+        // 同时检查其他禁用状态
+        const isDisabled = await page.evaluate(el => {
+          return el.hasAttribute('disabled') && el.getAttribute('disabled') === 'disabled' ||
+                 el.classList.contains('disabled') || 
+                 el.style.display === 'none' || 
+                 el.style.visibility === 'hidden';
+        }, nextPageButton);
+        
+        if (!isDisabled && (effectiveMaxItems === -1 || allValidItems.length < effectiveMaxItems)) {
+          log('找到下一页按钮，准备翻页收集更多数据...');
+          await nextPageButton.click();
+          await smartWait(page, { fallbackDelay: [1500, 2500] });
+          currentPage++;
+        } else {
+          log('没有更多页面或已达到最大收集数量');
+          hasMorePages = false;
+        }
+      } else {
+        log('没有找到下一页按钮，数据收集完成');
+        hasMorePages = false;
+      }
+    }
+    
+    // 所有页面数据收集完成后，统一处理
+    log(`\n=== 数据收集完成，开始统一处理 ===`);
+    log(`总共收集到 ${allValidItems.length} 条有效数据`);
+    
+    // 计算需要处理的数据数量（基于筛选后的有效数据）
+    let itemsToProcess = allValidItems.length;
+    if (effectiveMaxItems !== -1) {
+      itemsToProcess = Math.min(itemsToProcess, effectiveMaxItems);
+    }
+    
+    // 设置合理的并发数量
+    const maxConcurrency = Math.min(4, itemsToProcess);
+    const batchSize = maxConcurrency;
+    
+    log(`\n🚀 准备使用 ${maxConcurrency} 个并发进程分批处理 ${itemsToProcess} 项数据...`);
+    
+    // 初始化计数器
+    let totalSuccessCount = 0;
+    let totalFailureCount = 0;
+    
+    // 分批处理所有收集到的数据
+    for (let batchStart = 0; batchStart < itemsToProcess; batchStart += batchSize) {
+      const batchEnd = Math.min(batchStart + batchSize, itemsToProcess);
+      const currentBatch = allValidItems.slice(batchStart, batchEnd);
+      
+      log(`\n处理第 ${Math.floor(batchStart / batchSize) + 1} 批数据 (${batchStart + 1}-${batchEnd})...`);
+      
+      // 创建当前批次的并发进程任务数组
       const concurrentProcesses = [];
       
-      // 在 processListData 函数中，修改创建 taskData 的部分
-      for (let i = 0; i < itemsToProcess; i++) {
-      // 获取当前列表项的编辑链接
-      const currentItem = listItems[i];
-      const editButton = await currentItem.$('.js_csPlugin_go2edit');
-      let editUrl = '';
-      
-      if (editButton) {
-        editUrl = await editButton.evaluate(el => el.href);
-        log(`获取到第 ${i + 1} 项的编辑链接: ${editUrl}`);
-      }
-      
-      // 为每个数据项创建独立的进程任务
-      const taskData = {
-        itemIndex: i,
-        pageNumber: currentPage,
-        searchKeyword: searchKeyword,
-        targetUrl: process.env.TARGET_URL || 'https://work.weixin.qq.com/wework_admin/frame#/chatGroup',
-        editUrl: editUrl, // 新增编辑链接
-        authData: global.authData // 传递认证信息
-      };
+      // 基于当前批次的有效数据创建任务
+      for (let i = 0; i < currentBatch.length; i++) {
+        const validItem = currentBatch[i];
+        const globalIndex = batchStart + i;
+        log(`准备处理第 ${globalIndex + 1} 项有效数据: ${validItem.editUrl}`);
+        
+        // 为每个数据项创建独立的进程任务
+        const taskData = {
+          itemIndex: validItem.index,
+          searchKeyword: searchKeyword,
+          targetUrl: process.env.TARGET_URL || 'https://work.weixin.qq.com/wework_admin/frame#/chatGroup',
+          editUrl: validItem.editUrl,
+          validTitle: validItem.validTitle,
+          validAdminInfo: validItem.validAdminInfo,
+          authData: global.authData
+        };
       
         const processPromise = new Promise((resolve, reject) => {
           const workerPath = path.join(__dirname, 'worker.js');
           
-          // 创建临时文件传递数据，避免命令行参数过长
+          // 创建临时文件传递数据
           const tempDir = os.tmpdir();
           const tempFile = path.join(tempDir, `worker-data-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.json`);
           
@@ -297,10 +402,10 @@ const processListData = async (page, maxItems = -1) => {
             }
             
             if (code === 0) {
-              log(`✅ 进程 ${childProcess.pid} (任务 ${i + 1}) 处理成功`);
+              log(`✅ 进程 ${childProcess.pid} 处理成功`);
               resolve(true);
             } else {
-              log(`❌ 进程 ${childProcess.pid} (任务 ${i + 1}) 处理失败，退出码: ${code}`);
+              log(`❌ 进程 ${childProcess.pid} 处理失败，退出码: ${code}`);
               resolve(false);
             }
           });
@@ -316,7 +421,7 @@ const processListData = async (page, maxItems = -1) => {
               logError(`清理临时文件失败: ${cleanupError.message}`);
             }
             
-            logError(`❌ 进程 ${childProcess.pid} (任务 ${i + 1}) 启动失败:`, error);
+            logError(`❌ 进程 ${childProcess.pid} 启动失败:`, error);
             reject(error);
           });
         });
@@ -324,51 +429,29 @@ const processListData = async (page, maxItems = -1) => {
         concurrentProcesses.push(processPromise);
       }
       
-      // 并发执行所有进程
+      // 并发执行当前批次的所有进程
       const results = await Promise.allSettled(concurrentProcesses);
       
-      // 统计处理结果
-      let successCount = 0;
-      let failureCount = 0;
+      // 统计当前批次的处理结果
+      let batchSuccessCount = 0;
+      let batchFailureCount = 0;
       
-      results.forEach((result, index) => {
+      results.forEach((result) => {
         if (result.status === 'fulfilled' && result.value === true) {
-          successCount++;
+          batchSuccessCount++;
         } else {
-          failureCount++;
+          batchFailureCount++;
         }
       });
       
-      totalProcessedCount += successCount;
-      log(`\n📊 本页处理完成: 成功 ${successCount} 条，失败 ${failureCount} 条，总计处理 ${totalProcessedCount} 条`);
+      totalProcessedCount += batchSuccessCount;
+      totalSuccessCount += batchSuccessCount;
+      totalFailureCount += batchFailureCount;
       
-      // 检查是否有下一页（只有在需要处理更多数据时才翻页）
-      if (effectiveMaxItems === -1 || totalProcessedCount < effectiveMaxItems) {
-        log('\n检查是否有下一页...');
-        const nextPageButton = await page.$('.next-page, .pagination-next, [aria-label="下一页"]');
-        
-        if (nextPageButton) {
-          const isDisabled = await page.evaluate(el => {
-            return el.disabled || el.classList.contains('disabled') || el.getAttribute('aria-disabled') === 'true';
-          }, nextPageButton);
-          
-          if (!isDisabled) {
-            log('找到下一页按钮，准备翻页...');
-            await nextPageButton.click();
-            await delay(3000, 5000);
-            currentPage++;
-          } else {
-            log('下一页按钮已禁用，没有更多页面');
-            hasMorePages = false;
-          }
-        } else {
-          log('未找到下一页按钮，没有更多页面');
-          hasMorePages = false;
-        }
-      } else {
-        log('已达到处理数量限制，停止翻页');
-        hasMorePages = false;
-      }
+      log(`\n📊 第 ${Math.floor(batchStart / batchSize) + 1} 批处理完成:`);
+      log(`✅ 成功: ${batchSuccessCount} 项`);
+      log(`❌ 失败: ${batchFailureCount} 项`);
+      log(`📈 累计处理: ${totalProcessedCount} 项`);
     }
     
     log(`\n=== 多进程数据处理完成 ===`);
@@ -393,6 +476,41 @@ const processListData = async (page, maxItems = -1) => {
     // 从环境变量或命令行参数获取配置
     const maxItems = parseInt(process.env.MAX_ITEMS) || parseInt(process.argv[2]) || -1;
     const searchKeyword = process.env.SEARCH_KEYWORD || null;
+    
+    // 更新.env文件中的配置值
+    try {
+      const envPath = path.join(process.cwd(), '.env');
+      let envContent = '';
+      
+      // 如果.env文件存在，读取现有内容
+      if (fs.existsSync(envPath)) {
+        envContent = fs.readFileSync(envPath, 'utf8');
+      }
+      
+      // 更新或添加MAX_ITEMS
+      if (envContent.includes('MAX_ITEMS=')) {
+        envContent = envContent.replace(/MAX_ITEMS=.*/, `MAX_ITEMS=${maxItems}`);
+      } else {
+        envContent += `\nMAX_ITEMS=${maxItems}`;
+      }
+      
+      // 更新或添加SEARCH_KEYWORD
+      if (searchKeyword) {
+        if (envContent.includes('SEARCH_KEYWORD=')) {
+          envContent = envContent.replace(/SEARCH_KEYWORD=.*/, `SEARCH_KEYWORD=${searchKeyword}`);
+        } else {
+          envContent += `\nSEARCH_KEYWORD=${searchKeyword}`;
+        }
+      }
+      
+      // 写入更新后的内容
+      fs.writeFileSync(envPath, envContent.trim());
+      log(`✅ 已更新.env文件: MAX_ITEMS=${maxItems}, SEARCH_KEYWORD=${searchKeyword || '无'}`);
+    } catch (error) {
+      log(`⚠️ 更新.env文件失败: ${error.message}`);
+    }
+    
+    // 原有的后续逻辑...
     
     // 显示处理策略
     if (maxItems === -1 && searchKeyword && searchKeyword.trim() !== '') {
@@ -419,12 +537,12 @@ const processListData = async (page, maxItems = -1) => {
     }
     log(`使用Chrome路径: ${chromePath}`);
     
-    // 启动浏览器 - 设置为可视化模式
+    // 启动浏览器 - 性能优化版
     browser = await puppeteer.launch({
       executablePath: chromePath, // 指定Chrome可执行文件路径
       headless: false, // 设置为false以显示浏览器窗口
       devtools: false, // 可选：是否打开开发者工具
-      slowMo: 100, // 可选：每个操作之间的延迟（毫秒），便于观察
+      slowMo: 50, // 减少操作延迟
       defaultViewport: null, // 使用默认视口大小
       args: [
         '--start-maximized', // 启动时最大化窗口
@@ -432,7 +550,19 @@ const processListData = async (page, maxItems = -1) => {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-web-security',
-        '--disable-features=VizDisplayCompositor'
+        '--disable-features=VizDisplayCompositor',
+        '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding',
+        '--disable-extensions',
+        '--disable-plugins',
+        '--disable-images', // 禁用图片加载以提升速度
+        '--disable-javascript-harmony-shipping',
+        '--disable-background-networking',
+        '--disable-sync',
+        '--disable-translate',
+        '--disable-ipc-flooding-protection',
+        '--memory-pressure-off',
+        '--max_old_space_size=4096'
       ]
     });
     
@@ -516,7 +646,7 @@ const processListData = async (page, maxItems = -1) => {
             });
             
             log('页面已刷新，请重新扫描二维码');
-            await delay(2000, 3000); // 刷新后等待一下
+            await smartWait(page, { selector: 'body', action: 'stable', timeout: 3000 }); // 刷新后等待一下
           }
         }
         
@@ -540,7 +670,7 @@ const processListData = async (page, maxItems = -1) => {
               waitUntil: 'networkidle2',
               timeout: 30000 
             });
-            await delay(2000, 3000);
+            await smartWait(page, { selector: 'body', action: 'stable', timeout: 3000 });
           } catch (reloadError) {
             logError('页面刷新失败:', reloadError);
           }
@@ -559,7 +689,7 @@ const processListData = async (page, maxItems = -1) => {
       timeout: 30000
     });
     
-    await delay(3000, 5000);
+    await smartWait(page, { selector: 'body', action: 'stable', timeout: 5000 });
     
     // 4. 直接跳转到群聊管理页面
     log('直接跳转到群聊管理页面...');
@@ -569,7 +699,7 @@ const processListData = async (page, maxItems = -1) => {
     });
     
     log('✅ 已成功跳转到群聊管理页面');
-    await delay(3000, 5000);
+    await smartWait(page, { selector: '.ww_table.csPlugin_index_table', action: 'visible', timeout: 5000 });
     
     // 收集认证信息用于子进程共享
     log('收集认证信息...');
